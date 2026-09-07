@@ -19,11 +19,23 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: نصب Gradle
+      - name: نصب Gradle 8.6
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.6'
 
       - name: ساخت APK (Debug)
-        run: gradle assembleDebug
+        run: gradle assembleDebug --stacktrace --no-daemon
+
+      - name: ذخیره لاگ Build در صورت خطا
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-error-log
+          path: |
+            app/build/reports/**
+            app/build/outputs/logs/**
+          if-no-files-found: ignore
 
       - name: بارگذاری APK به‌عنوان خروجی قابل دانلود
         uses: actions/upload-artifact@v4
