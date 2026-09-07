@@ -1,5 +1,6 @@
 package com.example.bookapp.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -53,11 +54,12 @@ fun CompareScreen(
 
             HorizontalDivider(thickness = 2.dp)
 
-            // نیمه پایین: نقش دوم
+            // نیمه پایین: نقش دوم (پس‌زمینه متفاوت تا از نقش اول قابل تشخیص باشد)
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp)
             ) {

@@ -18,7 +18,13 @@ private val DefaultDark = darkColorScheme(
     primaryContainer = Color(0xFF2A230F),
     onPrimaryContainer = Color(0xFFEFE0C0)
 )
-private val DefaultLight = lightColorScheme()
+private val DefaultLight = lightColorScheme(
+    primary = Color(0xFF8A6D1E),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFF3E3B8),
+    onPrimaryContainer = Color(0xFF2A2000),
+    secondary = Color(0xFF9C8449)
+)
 
 // تم سبز-طلایی
 private val GreenDark = darkColorScheme(

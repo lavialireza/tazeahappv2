@@ -1,6 +1,7 @@
 package com.example.bookapp
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,14 +24,58 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // ثبت خودکار کرش‌ها: در صورت کرش برنامه، جزئیات خطا در یک فایل داخل
+        // حافظه‌ی اپ ذخیره می‌شود تا بعداً از تنظیمات قابل مشاهده/ارسال باشد
+        // (چون به سرویس آنالیتیکس بیرونی وصل نیستیم، این ساده‌ترین راه محلی است).
+        val defaultCrashHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val logFile = java.io.File(filesDir, "last_crash.txt")
+                logFile.writeText(
+                    "زمان: ${java.util.Date()}\n\n" + android.util.Log.getStackTraceString(throwable)
+                )
+            } catch (e: Exception) {
+                // اگر نوشتن لاگ هم شکست خورد، کاری نمی‌شود کرد
+            }
+            defaultCrashHandler?.uncaughtException(thread, throwable)
+        }
+
         // اگر اپ از طریق میان‌بر فشار طولانی روی آیکون باز شده، مقصد را می‌خوانیم
         val shortcutTarget = intent?.getStringExtra("shortcut_target")
 
+        // اگر اپ از طریق یک لینک taziehapp://section/{id} باز شده (اشتراک‌گذاری مستقیم یک بخش)
+        val deepLinkSectionId = intent?.data?.let { uri ->
+            if (uri.scheme == "taziehapp" && uri.host == "section") uri.lastPathSegment?.toLongOrNull() else null
+        }
+
         setContent {
-            var darkMode by remember { mutableStateOf(Prefs.isDarkMode(this)) }
+            var autoDarkMode by remember { mutableStateOf(Prefs.getAutoDarkMode(this)) }
+            var darkMode by remember {
+                mutableStateOf(if (autoDarkMode) Prefs.isNightTimeNow() else Prefs.isDarkMode(this))
+            }
             var fontScale by remember { mutableFloatStateOf(Prefs.getFontScale(this)) }
             var themeChoice by remember { mutableStateOf(Prefs.getThemeChoice(this)) }
             var fontChoice by remember { mutableStateOf(Prefs.getFontChoice(this)) }
+            var keepScreenOn by remember { mutableStateOf(Prefs.getKeepScreenOn(this)) }
+
+            // با تغییر تنظیم، بلافاصله روی پنجره اعمال می‌شود (هم می‌شود روشنش کرد هم خاموش)
+            androidx.compose.runtime.LaunchedEffect(keepScreenOn) {
+                if (keepScreenOn) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+
+            // در اندروید ۱۳ به بعد، نمایش اعلان نیاز به اجازه‌ی صریح کاربر دارد
+            val notificationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+                contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+            ) { /* نتیجه را نادیده می‌گیریم؛ اگر رد شود فقط اعلان نشان داده نمی‌شود */ }
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
 
             val colorScheme = colorSchemeFor(themeChoice, darkMode)
             val typography = typographyFor(fontChoice)
@@ -49,6 +94,12 @@ class MainActivity : ComponentActivity() {
                                 darkMode = it
                                 Prefs.setDarkMode(this, it)
                             },
+                            autoDarkMode = autoDarkMode,
+                            onAutoDarkModeChange = {
+                                autoDarkMode = it
+                                Prefs.setAutoDarkMode(this, it)
+                                if (it) darkMode = Prefs.isNightTimeNow()
+                            },
                             fontScale = fontScale,
                             onFontScaleChange = {
                                 fontScale = it
@@ -64,7 +115,13 @@ class MainActivity : ComponentActivity() {
                                 fontChoice = it
                                 Prefs.setFontChoice(this, it)
                             },
-                            shortcutTarget = shortcutTarget
+                            keepScreenOn = keepScreenOn,
+                            onKeepScreenOnChange = {
+                                keepScreenOn = it
+                                Prefs.setKeepScreenOn(this, it)
+                            },
+                            shortcutTarget = shortcutTarget,
+                            deepLinkSectionId = deepLinkSectionId
                         )
                     }
                 }

@@ -32,9 +32,11 @@ fun GenericListScreen(
     floatingAction: (@Composable () -> Unit)? = null,
     selectedIds: Set<Long> = emptySet(),
     onToggleSelect: ((ListItemData) -> Unit)? = null,
-    topBarAction: (@Composable () -> Unit)? = null
+    topBarAction: (@Composable () -> Unit)? = null,
+    snackbarHostState: SnackbarHostState? = null
 ) {
     Scaffold(
+        snackbarHost = { snackbarHostState?.let { SnackbarHost(it) } },
         topBar = {
             TopAppBar(
                 title = { Text(screenTitle) },

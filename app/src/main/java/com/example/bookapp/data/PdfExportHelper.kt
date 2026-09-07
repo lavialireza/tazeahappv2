@@ -16,6 +16,33 @@ import java.io.FileOutputStream
  * از StaticLayout برای چیدمان صحیح متن فارسی (راست‌به‌چپ) استفاده می‌شود.
  */
 suspend fun exportRoleToPdf(context: Context, roleTitle: String, sections: List<SectionEntity>) {
+    exportPdfInternal(context, roleTitle, listOf(roleTitle to sections))
+}
+
+/**
+ * خروجی PDF از کل یک تعزیه: همه‌ی نقش‌ها پشت سر هم، هرکدام با عنوان نقش
+ * به‌عنوان زیرعنوان، مناسب برای کارگردانی که می‌خواهد کل متن تعزیه را چاپ کند.
+ */
+suspend fun exportTaziehToPdf(context: Context, taziehTitle: String, roles: List<Pair<String, List<SectionEntity>>>) {
+    exportPdfInternal(context, taziehTitle, roles)
+}
+
+/**
+ * خروجی PDF از یک گفتگو: هر نوبت به‌عنوان یک بخش مستقل با نام نقش‌گوینده‌اش
+ * به‌ترتیب چاپ می‌شود، شبیه یک نمایش‌نامه.
+ */
+suspend fun exportDialogueToPdf(context: Context, dialogueTitle: String, turns: List<Triple<String, String, String>>) {
+    val roles = turns.map { (roleTitle, sectionTitle, content) ->
+        roleTitle to listOf(SectionEntity(id = 0, roleId = 0, orderIndex = 0, title = sectionTitle, content = content))
+    }
+    exportPdfInternal(context, dialogueTitle, roles)
+}
+
+private suspend fun exportPdfInternal(
+    context: Context,
+    documentTitle: String,
+    roles: List<Pair<String, List<SectionEntity>>>
+) {
     val pageWidth = 595 // اندازه تقریبی A4 در نقطه (72dpi)
     val pageHeight = 842
     val margin = 40f
@@ -26,6 +53,11 @@ suspend fun exportRoleToPdf(context: Context, roleTitle: String, sections: List<
         isAntiAlias = true
         textSize = 18f
         textAlign = Paint.Align.RIGHT
+    }
+    val roleTitlePaint = TextPaint().apply {
+        isAntiAlias = true
+        textSize = 15f
+        isFakeBoldText = true
     }
     val bodyPaint = TextPaint().apply {
         isAntiAlias = true
@@ -45,42 +77,59 @@ suspend fun exportRoleToPdf(context: Context, roleTitle: String, sections: List<
         y = margin
     }
 
-    // عنوان کلی نقش
-    canvas.drawText(roleTitle, pageWidth - margin, y + 20f, titlePaint)
+    // عنوان کلی سند (نام نقش یا نام کل تعزیه)
+    canvas.drawText(documentTitle, pageWidth - margin, y + 20f, titlePaint)
     y += 40f
 
-    for (section in sections) {
-        val header = StaticLayout.Builder
-            .obtain(section.title, 0, section.title.length, bodyPaint, contentWidth)
-            .setAlignment(Layout.Alignment.ALIGN_OPPOSITE) // راست‌چین
-            .build()
+    val isMultiRole = roles.size > 1
 
-        if (y + header.height > pageHeight - margin) newPage()
-        canvas.save()
-        canvas.translate(margin, y)
-        header.draw(canvas)
-        canvas.restore()
-        y += header.height + 8f
+    for ((roleTitle, sections) in roles) {
+        if (isMultiRole) {
+            val roleHeader = StaticLayout.Builder
+                .obtain(roleTitle, 0, roleTitle.length, roleTitlePaint, contentWidth)
+                .setAlignment(Layout.Alignment.ALIGN_OPPOSITE)
+                .build()
+            if (y + roleHeader.height > pageHeight - margin) newPage()
+            canvas.save()
+            canvas.translate(margin, y)
+            roleHeader.draw(canvas)
+            canvas.restore()
+            y += roleHeader.height + 14f
+        }
 
-        val body = StaticLayout.Builder
-            .obtain(section.content, 0, section.content.length, bodyPaint, contentWidth)
-            .setAlignment(Layout.Alignment.ALIGN_OPPOSITE)
-            .setLineSpacing(6f, 1f)
-            .build()
+        for (section in sections) {
+            val header = StaticLayout.Builder
+                .obtain(section.title, 0, section.title.length, bodyPaint, contentWidth)
+                .setAlignment(Layout.Alignment.ALIGN_OPPOSITE) // راست‌چین
+                .build()
 
-        // چون ممکن است متن طولانی از یک صفحه بیشتر باشد، به‌صورت ساده هر بخش را
-        // یکجا در صفحه فعلی یا صفحه بعد رسم می‌کنیم
-        if (y + body.height > pageHeight - margin && y > margin + 40f) newPage()
-        canvas.save()
-        canvas.translate(margin, y)
-        body.draw(canvas)
-        canvas.restore()
-        y += body.height + 24f
+            if (y + header.height > pageHeight - margin) newPage()
+            canvas.save()
+            canvas.translate(margin, y)
+            header.draw(canvas)
+            canvas.restore()
+            y += header.height + 8f
+
+            val body = StaticLayout.Builder
+                .obtain(section.content, 0, section.content.length, bodyPaint, contentWidth)
+                .setAlignment(Layout.Alignment.ALIGN_OPPOSITE)
+                .setLineSpacing(6f, 1f)
+                .build()
+
+            // چون ممکن است متن طولانی از یک صفحه بیشتر باشد، به‌صورت ساده هر بخش را
+            // یکجا در صفحه فعلی یا صفحه بعد رسم می‌کنیم
+            if (y + body.height > pageHeight - margin && y > margin + 40f) newPage()
+            canvas.save()
+            canvas.translate(margin, y)
+            body.draw(canvas)
+            canvas.restore()
+            y += body.height + 24f
+        }
     }
 
     document.finishPage(page)
 
-    val safeTitle = roleTitle.replace(Regex("[^\\p{L}\\p{N}]"), "_")
+    val safeTitle = documentTitle.replace(Regex("[^\\p{L}\\p{N}]"), "_")
     val file = File(context.cacheDir, "$safeTitle.pdf")
     FileOutputStream(file).use { document.writeTo(it) }
     document.close()

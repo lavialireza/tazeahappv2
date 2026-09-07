@@ -1,14 +1,19 @@
 package com.example.bookapp.ui.screens
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.example.bookapp.data.Prefs
 
 @Composable
 fun LoginScreen(onLoginSuccess: () -> Unit) {
+    val context = LocalContext.current
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -16,8 +21,12 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
+            // وقتی کیبورد باز می‌شود این پدینگ صفحه را بالا می‌کشد تا کادرها زیر کیبورد پنهان نشوند
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp)
+            .padding(top = 64.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("ورود به اپلیکیشن", style = MaterialTheme.typography.headlineSmall)
@@ -27,6 +36,7 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
             value = username,
             onValueChange = { username = it },
             label = { Text("نام کاربری") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(Modifier.height(12.dp))
@@ -35,6 +45,8 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
             value = password,
             onValueChange = { password = it },
             label = { Text("رمز عبور") },
+            placeholder = { Text("فعلاً رمزی تنظیم نشده — می‌توانید خالی بگذارید") },
+            singleLine = true,
             visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth()
         )
@@ -47,12 +59,12 @@ fun LoginScreen(onLoginSuccess: () -> Unit) {
 
         Button(
             onClick = {
-                // TODO: اینجا می‌توانید اعتبارسنجی واقعی (سرور یا دیتابیس محلی) قرار دهید.
-                // فعلاً هر نام‌کاربری/رمز غیرخالی پذیرفته می‌شود.
-                if (username.isNotBlank() && password.isNotBlank()) {
-                    onLoginSuccess()
-                } else {
-                    error = "لطفاً نام کاربری و رمز عبور را وارد کنید"
+                val savedPassword = Prefs.getAppPassword(context)
+                when {
+                    username.isBlank() -> error = "لطفاً نام کاربری را وارد کنید"
+                    savedPassword.isBlank() -> onLoginSuccess() // هنوز رمزی تنظیم نشده؛ ورود آزاد است
+                    password != savedPassword -> error = "رمز عبور اشتباه است"
+                    else -> onLoginSuccess()
                 }
             },
             modifier = Modifier.fillMaxWidth()

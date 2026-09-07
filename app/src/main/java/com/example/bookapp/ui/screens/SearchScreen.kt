@@ -7,28 +7,57 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.bookapp.data.FieldEntity
+import com.example.bookapp.data.DialogueSearchResult
 import com.example.bookapp.data.SearchResult
 import com.example.bookapp.data.TaziehEntity
+import kotlinx.coroutines.delay
+
+data class SearchOptions(
+    val exactPhrase: Boolean,
+    val inTitle: Boolean,
+    val inText: Boolean,
+    val inRole: Boolean,
+    val inTazieh: Boolean,
+    val inField: Boolean,
+    val inFootnote: Boolean,
+    val limit: Int
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     fields: List<FieldEntity>,
     allTaziehs: List<TaziehEntity>,
-    onSearch: suspend (query: String, fieldId: Long?, taziehId: Long?) -> List<SearchResult>,
+    onSearch: suspend (query: String, fieldId: Long?, taziehId: Long?, options: SearchOptions) -> List<SearchResult>,
+    onSearchDialogues: suspend (query: String) -> List<DialogueSearchResult> = { emptyList() },
     onResultClick: (SearchResult) -> Unit,
+    onDialogueResultClick: (DialogueSearchResult) -> Unit = {},
+    isBookmarked: (Long) -> Boolean = { false },
+    onToggleBookmark: (Long) -> Unit = {},
     onBack: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf(listOf<SearchResult>()) }
+    var dialogueResults by remember { mutableStateOf(listOf<DialogueSearchResult>()) }
     var searched by remember { mutableStateOf(false) }
     var selectedFieldId by remember { mutableStateOf<Long?>(null) }
     var selectedTaziehId by remember { mutableStateOf<Long?>(null) }
+    var showAdvanced by remember { mutableStateOf(false) }
+    var exactPhrase by remember { mutableStateOf(false) }
+    var inTitle by remember { mutableStateOf(true) }
+    var inText by remember { mutableStateOf(true) }
+    var inRole by remember { mutableStateOf(true) }
+    var inTazieh by remember { mutableStateOf(true) }
+    var inField by remember { mutableStateOf(false) }
+    var inFootnote by remember { mutableStateOf(true) }
+    var limit by remember { mutableIntStateOf(200) }
 
     val taziehsForField = remember(selectedFieldId, allTaziehs) {
         if (selectedFieldId == null) emptyList() else allTaziehs.filter { it.fieldId == selectedFieldId }
@@ -54,6 +83,9 @@ fun SearchScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(16.dp)
             )
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { showAdvanced = true }) { Text("جستجوی پیشرفته ⚙") }
+            }
 
             LazyRow(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -105,26 +137,63 @@ fun SearchScreen(
             }
             Spacer(Modifier.height(8.dp))
 
-            LaunchedEffect(query, selectedFieldId, selectedTaziehId) {
+            LaunchedEffect(query, selectedFieldId, selectedTaziehId, exactPhrase, inTitle, inText, inRole, inTazieh, inField, inFootnote, limit) {
                 if (query.trim().length >= 2) {
-                    results = onSearch(query.trim(), selectedFieldId, selectedTaziehId)
+                    delay(250)
+                    results = onSearch(query.trim(), selectedFieldId, selectedTaziehId, SearchOptions(exactPhrase, inTitle, inText, inRole, inTazieh, inField, inFootnote, limit))
+                    dialogueResults = if (selectedFieldId == null && selectedTaziehId == null) onSearchDialogues(query.trim()) else emptyList()
                     searched = true
                 } else {
                     results = emptyList()
+                    dialogueResults = emptyList()
                     searched = false
                 }
             }
 
-            if (searched && results.isEmpty()) {
+            if (searched && results.isEmpty() && dialogueResults.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
                     Text("نتیجه‌ای یافت نشد")
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    if (dialogueResults.isNotEmpty()) {
+                        item {
+                            Text(
+                                "گفتگوها",
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                        items(dialogueResults) { d ->
+                            ListItem(
+                                headlineContent = { Text(d.dialogueTitle) },
+                                supportingContent = { Text(d.taziehTitle) },
+                                modifier = Modifier.clickable { onDialogueResultClick(d) }
+                            )
+                            HorizontalDivider()
+                        }
+                        if (results.isNotEmpty()) {
+                            item {
+                                Text(
+                                    "بخش‌ها",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
                     items(results) { r ->
                         ListItem(
                             headlineContent = { Text(r.sectionTitle) },
                             supportingContent = { Text("${r.fieldTitle} ← ${r.taziehTitle} ← ${r.roleTitle}") },
+                            trailingContent = {
+                                IconButton(onClick = { onToggleBookmark(r.sectionId) }) {
+                                    Icon(
+                                        if (isBookmarked(r.sectionId)) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                                        contentDescription = "نشان کردن"
+                                    )
+                                }
+                            },
                             modifier = Modifier.clickable { onResultClick(r) }
                         )
                         HorizontalDivider()
@@ -132,5 +201,29 @@ fun SearchScreen(
                 }
             }
         }
+    }
+
+    if (showAdvanced) {
+        AlertDialog(
+            onDismissRequest = { showAdvanced = false },
+            title = { Text("تنظیمات جستجوی پیشرفته") },
+            text = {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(exactPhrase, { exactPhrase = it }); Text("عبارت دقیق") }
+                    Text("جستجو در:", style = MaterialTheme.typography.titleSmall)
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(inTitle, { inTitle = it }); Text("عنوان بخش") }
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(inText, { inText = it }); Text("متن شعر") }
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(inRole, { inRole = it }); Text("نام نقش") }
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(inTazieh, { inTazieh = it }); Text("نام تعزیه") }
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(inField, { inField = it }); Text("نام زمینه") }
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(inFootnote, { inFootnote = it }); Text("واژه و پاورقی") }
+                    Spacer(Modifier.height(8.dp))
+                    Text("حداکثر نتیجه: $limit")
+                    Slider(value = limit.toFloat(), onValueChange = { limit = (it / 25).toInt() * 25 }, valueRange = 50f..500f, steps = 17)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showAdvanced = false }) { Text("اعمال") } },
+            dismissButton = { TextButton(onClick = { showAdvanced = false }) { Text("بستن") } }
+        )
     }
 }
