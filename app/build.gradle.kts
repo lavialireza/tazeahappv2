@@ -22,31 +22,20 @@ android {
     namespace = "com.example.bookapp"
     compileSdk = 34
 
-    // نسخه برنامه را اینجا دستی تعیین کنید.
-    // برای هر انتشار جدید فقط این دو مقدار را تغییر دهید.
+    // نسخه را دستی و پایدار تعریف کنید. برای نصب همزمان نسخه اصلی و آزمایشی،
+    // فقط با -PtestApp=true شناسه بسته و نام برنامه تغییر می‌کند.
+    val isTestApp = providers.gradleProperty("testApp").orNull == "true"
     val appVersionCode = 100
     val appVersionName = "1.0.0"
 
     defaultConfig {
-        applicationId = "com.example.bookapp"
+        applicationId = if (isTestApp) "com.example.bookapp.test" else "com.example.bookapp"
         minSdk = 23
         targetSdk = 34
         versionCode = appVersionCode
-        versionName = appVersionName
-    }
-
-    // دو نسخه مستقل برای مقایسه همزمان روی یک گوشی:
-    // stable = نسخه اصلی، test = نسخه آزمایشی با شناسه نصب جداگانه.
-    flavorDimensions += "edition"
-    productFlavors {
-        create("stable") {
-            dimension = "edition"
-        }
-        create("test") {
-            dimension = "edition"
-            applicationIdSuffix = ".test"
-            versionNameSuffix = "-TEST"
-        }
+        versionName = if (isTestApp) "$appVersionName-TEST" else appVersionName
+        manifestPlaceholders["appLabel"] =
+            if (isTestApp) "تعزیه و شبیه‌خوانی - TEST" else "تعزیه و شبیه‌خوانی"
     }
 
     val storeFilePath = signingProp("RELEASE_STORE_FILE")
