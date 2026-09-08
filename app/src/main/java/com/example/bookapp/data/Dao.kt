@@ -154,9 +154,6 @@ interface TaziehImageDao {
     @Query("SELECT * FROM tazieh_images WHERE taziehId = :taziehId ORDER BY id")
     suspend fun getByTazieh(taziehId: Long): List<TaziehImageEntity>
 
-    @Query("SELECT * FROM tazieh_images ORDER BY id")
-    suspend fun getAll(): List<TaziehImageEntity>
-
     @Insert
     suspend fun insert(image: TaziehImageEntity): Long
 

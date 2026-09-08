@@ -11,23 +11,18 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.bookapp.data.FieldEntity
 import com.example.bookapp.data.DialogueSearchResult
 import com.example.bookapp.data.SearchResult
 import com.example.bookapp.data.TaziehEntity
-import kotlinx.coroutines.delay
 
 data class SearchOptions(
-    val exactPhrase: Boolean,
-    val inTitle: Boolean,
-    val inText: Boolean,
-    val inRole: Boolean,
-    val inTazieh: Boolean,
-    val inField: Boolean,
-    val inFootnote: Boolean,
-    val limit: Int
+    val inTitle: Boolean = true, val inText: Boolean = true, val inRole: Boolean = true,
+    val inTazieh: Boolean = true, val inField: Boolean = false, val inFootnote: Boolean = true,
+    val limit: Int = 200
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,7 +45,6 @@ fun SearchScreen(
     var selectedFieldId by remember { mutableStateOf<Long?>(null) }
     var selectedTaziehId by remember { mutableStateOf<Long?>(null) }
     var showAdvanced by remember { mutableStateOf(false) }
-    var exactPhrase by remember { mutableStateOf(false) }
     var inTitle by remember { mutableStateOf(true) }
     var inText by remember { mutableStateOf(true) }
     var inRole by remember { mutableStateOf(true) }
@@ -83,6 +77,7 @@ fun SearchScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(16.dp)
             )
+
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = { showAdvanced = true }) { Text("جستجوی پیشرفته ⚙") }
             }
@@ -137,10 +132,10 @@ fun SearchScreen(
             }
             Spacer(Modifier.height(8.dp))
 
-            LaunchedEffect(query, selectedFieldId, selectedTaziehId, exactPhrase, inTitle, inText, inRole, inTazieh, inField, inFootnote, limit) {
+            LaunchedEffect(query, selectedFieldId, selectedTaziehId, inTitle, inText, inRole, inTazieh, inField, inFootnote, limit) {
                 if (query.trim().length >= 2) {
                     delay(250)
-                    results = onSearch(query.trim(), selectedFieldId, selectedTaziehId, SearchOptions(exactPhrase, inTitle, inText, inRole, inTazieh, inField, inFootnote, limit))
+                    results = onSearch(query.trim(), selectedFieldId, selectedTaziehId, SearchOptions(inTitle, inText, inRole, inTazieh, inField, inFootnote, limit))
                     dialogueResults = if (selectedFieldId == null && selectedTaziehId == null) onSearchDialogues(query.trim()) else emptyList()
                     searched = true
                 } else {
@@ -202,14 +197,12 @@ fun SearchScreen(
             }
         }
     }
-
     if (showAdvanced) {
         AlertDialog(
             onDismissRequest = { showAdvanced = false },
             title = { Text("تنظیمات جستجوی پیشرفته") },
             text = {
                 Column(Modifier.fillMaxWidth()) {
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(exactPhrase, { exactPhrase = it }); Text("عبارت دقیق") }
                     Text("جستجو در:", style = MaterialTheme.typography.titleSmall)
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(inTitle, { inTitle = it }); Text("عنوان بخش") }
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { Checkbox(inText, { inText = it }); Text("متن شعر") }
@@ -226,4 +219,5 @@ fun SearchScreen(
             dismissButton = { TextButton(onClick = { showAdvanced = false }) { Text("بستن") } }
         )
     }
+
 }

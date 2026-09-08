@@ -46,8 +46,8 @@ android {
         // شماره نسخه/برچسب هر build به‌صورت خودکار از تاریخچه Git ساخته می‌شود
         // (تعداد کامیت‌ها = versionCode، و نام نسخه شامل هش کوتاه کامیت است)
         // تا هر build یک برچسب منحصربه‌فرد داشته باشد و قابل ردیابی باشد.
-        versionCode = maxOf(2, gitCommitCount)
-        versionName = "1.1-backup-search-gallery-build$gitCommitCount+$gitShortSha"
+        versionCode = gitCommitCount
+        versionName = "1.0-build$gitCommitCount+$gitShortSha"
     }
 
     val storeFilePath = signingProp("RELEASE_STORE_FILE")

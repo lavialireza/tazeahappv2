@@ -52,24 +52,3 @@ fun decryptBackupBytes(data: ByteArray, password: String): String {
     val decrypted = cipher.doFinal(encrypted)
     return String(decrypted, Charsets.UTF_8)
 }
-
-/** AES-GCM for arbitrary binary backup payloads (ZIP/media). */
-fun encryptBackupBytes(plain: ByteArray, password: String): ByteArray {
-    val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
-    val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
-    val key = deriveKey(password, salt)
-    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-    cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
-    return salt + iv + cipher.doFinal(plain)
-}
-
-fun decryptBackupBinary(data: ByteArray, password: String): ByteArray {
-    require(data.size > 28) { "فایل پشتیبان خیلی کوچک/نامعتبر است" }
-    val salt = data.copyOfRange(0, 16)
-    val iv = data.copyOfRange(16, 28)
-    val encrypted = data.copyOfRange(28, data.size)
-    val key = deriveKey(password, salt)
-    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-    cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
-    return cipher.doFinal(encrypted)
-}

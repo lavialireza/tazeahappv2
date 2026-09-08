@@ -197,16 +197,10 @@ fun AppNavigation(
                 allTaziehs = allTaziehs,
                 onSearch = { query, fieldId, taziehId, options ->
                     db.searchDao().advancedSearch(
-                        query = query,
-                        fieldId = fieldId,
-                        taziehId = taziehId,
-                        inTitle = if (options.inTitle) 1 else 0,
-                        inText = if (options.inText) 1 else 0,
-                        inRole = if (options.inRole) 1 else 0,
-                        inTazieh = if (options.inTazieh) 1 else 0,
-                        inField = if (options.inField) 1 else 0,
-                        inFootnote = if (options.inFootnote) 1 else 0,
-                        limit = options.limit
+                        query, fieldId, taziehId,
+                        if (options.inTitle) 1 else 0, if (options.inText) 1 else 0,
+                        if (options.inRole) 1 else 0, if (options.inTazieh) 1 else 0,
+                        if (options.inField) 1 else 0, if (options.inFootnote) 1 else 0, options.limit
                     )
                 },
                 onResultClick = { result -> navController.navigate("text/${result.sectionId}") },
@@ -302,20 +296,17 @@ fun AppNavigation(
 
         composable(ROUTE_ALL_IMAGES) {
             var images by remember { mutableStateOf(listOf<GalleryImageItem>()) }
-            var allTaziehsForGallery by remember { mutableStateOf(listOf<com.example.bookapp.data.TaziehEntity>()) }
-            val scope = rememberCoroutineScope()
-            suspend fun reloadGallery() {
-                allTaziehsForGallery = db.taziehDao().getAll()
+            LaunchedEffect(Unit) {
                 val taziehs = db.taziehDao().getAll()
-                images = taziehs.flatMap { tazieh -> db.taziehImageDao().getByTazieh(tazieh.id).map { img -> GalleryImageItem(img.id, img.filePath, img.caption, tazieh.title) } }
+                images = taziehs.flatMap { tazieh ->
+                    db.taziehImageDao().getByTazieh(tazieh.id).map { img ->
+                        GalleryImageItem(img.id, img.filePath, img.caption, tazieh.title)
+                    }
+                }
             }
-            LaunchedEffect(Unit) { reloadGallery() }
             AllImagesGalleryScreen(
                 images = images,
-                taziehs = allTaziehsForGallery,
-                onBack = { navController.popBackStack() },
-                onDeleteImage = { image -> scope.launch { val entity = db.taziehImageDao().getById(image.id); db.taziehImageDao().delete(image.id); com.example.bookapp.data.deleteImageFromAppStorage(entity.filePath); reloadGallery() } },
-                onUpdateCaption = { image, caption -> scope.launch { db.taziehImageDao().updateCaption(image.id, caption); reloadGallery() } }
+                onBack = { navController.popBackStack() }
             )
         }
 

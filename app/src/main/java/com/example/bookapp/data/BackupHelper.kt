@@ -4,188 +4,166 @@ import android.content.Context
 import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.util.zip.ZipEntry
-import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
 
 /**
- * پشتیبان کامل نسخه 2: JSON + فایل‌های واقعی تصویر و صدا داخل ZIP.
- * ارجاع‌ها با مسیر معنایی (زمینه/تعزیه/نقش/بخش) ذخیره می‌شوند، نه ID دیتابیس؛
- * بنابراین بازیابی روی دیتابیس تازه هم ارتباط‌ها را درست بازسازی می‌کند.
+ * پشتیبان‌گیری کامل (JSON، قابل بازیابی) از همه‌ی چیزهایی که کاربر خودش در برنامه
+ * ساخته: یادداشت‌ها، علاقه‌مندی‌ها (بوکمارک)، پاورقی‌ها، نقش‌های «من»، و گفتگوها.
+ *
+ * چون از Storage Access Framework اندروید (ACTION_CREATE_DOCUMENT / ACTION_OPEN_DOCUMENT)
+ * استفاده می‌شود، کاربر از همان پنجره‌ی انتخاب مسیر سیستم می‌تواند هم یک سرویس ابری
+ * (گوگل‌درایو و مشابه، اگر روی گوشی نصب باشد) و هم حافظه‌ی داخلی/خارجی گوشی (کارت
+ * حافظه، پوشه‌ی Downloads) را انتخاب کند - نیازی به اتصال به یک سرویس ابری خاص نیست.
+ *
+ * نکته: خود فایل‌های تصویر (عکس‌های گالری هر تعزیه) در این نسخه از پشتیبان شامل
+ * نمی‌شوند (فقط توضیح/مسیرشان)، چون حجم آن‌ها می‌تواند بزرگ باشد؛ اگر لازم شد
+ * می‌توان بعداً پشتیبان‌گیری از خود فایل‌های تصویر را هم اضافه کرد.
  */
 suspend fun buildBackupJson(context: Context, db: AppDatabase): String {
-    val root = JSONObject().apply {
-        put("app", "taziehapp")
-        put("backupVersion", 2)
-    }
+    val root = JSONObject()
+    root.put("app", "taziehapp")
+    root.put("backupVersion", 1)
 
     val notesArr = JSONArray()
-    db.noteDao().getAll().forEach { n ->
-        notesArr.put(JSONObject().apply { put("title", n.title); put("content", n.content) })
+    db.noteDao().getAll().forEach { note ->
+        notesArr.put(JSONObject().apply {
+            put("title", note.title)
+            put("content", note.content)
+        })
     }
     root.put("notes", notesArr)
 
-    val bookmarks = JSONArray()
-    for (id in Prefs.getBookmarks(context)) {
-        val key = sectionKey(db, id)
-        if (key != null) bookmarks.put(key)
-    }
-    root.put("bookmarks", bookmarks)
+    val bookmarksArr = JSONArray()
+    Prefs.getBookmarks(context).forEach { bookmarksArr.put(it) }
+    root.put("bookmarks", bookmarksArr)
 
-    val footnotes = JSONArray()
-    val myRoles = JSONArray()
-    val dialogues = JSONArray()
-    val images = JSONArray()
-    val audio = JSONArray()
-
+    val footnotesArr = JSONArray()
+    // برای همه‌ی بخش‌ها پاورقی‌ها را جمع می‌کنیم (فقط بخش‌هایی که واقعاً پاورقی دارند)
     db.fieldDao().getAll().forEach { field ->
         db.taziehDao().getByField(field.id).forEach { tazieh ->
-            val tKey = taziehKey(field.title, tazieh.title)
-            Prefs.getAllMyRoles(context).firstOrNull { it.first == tazieh.id }?.let { pair ->
-                db.roleDao().getById(pair.second).let { role ->
-                    myRoles.put(JSONObject().apply { put("tazieh", tKey); put("role", role.title) })
-                }
-            }
-            db.taziehImageDao().getByTazieh(tazieh.id).forEach { image ->
-                val file = File(image.filePath)
-                if (file.exists() && file.isFile) {
-                    val archiveName = "media/images/${image.id}_${file.name}"
-                    images.put(JSONObject().apply {
-                        put("tazieh", tKey); put("caption", image.caption); put("archive", archiveName)
-                    })
-                }
-            }
             db.roleDao().getByTazieh(tazieh.id).forEach { role ->
                 db.sectionDao().getByRole(role.id).forEach { section ->
-                    val sKey = sectionKey(field.title, tazieh.title, role.title, section.title)
                     db.footnoteDao().getBySection(section.id).forEach { fn ->
-                        footnotes.put(JSONObject().apply {
-                            put("section", sKey); put("term", fn.term); put("explanation", fn.explanation)
-                        })
-                    }
-                    val audioPath = section.audioUrl?.takeIf { it.isNotBlank() }?.let { File(it) }
-                    if (audioPath != null && audioPath.exists() && audioPath.isFile && audioPath.canonicalPath.startsWith(File(context.filesDir, "tazieh_audio").canonicalPath)) {
-                        audio.put(JSONObject().apply {
-                            put("section", sKey); put("archive", "media/audio/${audioPath.name}")
+                        footnotesArr.put(JSONObject().apply {
+                            put("sectionId", fn.sectionId)
+                            put("term", fn.term)
+                            put("explanation", fn.explanation)
                         })
                     }
                 }
-            }
-            db.dialogueDao().getByTazieh(tazieh.id).forEach { dialogue ->
-                val turns = JSONArray()
-                db.dialogueTurnDao().getByDialogue(dialogue.id).forEach { turn ->
-                    sectionKey(db, turn.sectionId)?.let { key ->
-                        turns.put(JSONObject().apply { put("section", key); put("orderIndex", turn.orderIndex) })
-                    }
-                }
-                dialogues.put(JSONObject().apply { put("tazieh", tKey); put("title", dialogue.title); put("turns", turns) })
             }
         }
     }
-    root.put("footnotes", footnotes)
-    root.put("myRoles", myRoles)
-    root.put("dialogues", dialogues)
-    root.put("images", images)
-    root.put("audio", audio)
+    root.put("footnotes", footnotesArr)
+
+    val myRolesArr = JSONArray()
+    Prefs.getAllMyRoles(context).forEach { (taziehId, roleId) ->
+        myRolesArr.put(JSONObject().apply {
+            put("taziehId", taziehId)
+            put("roleId", roleId)
+        })
+    }
+    root.put("myRoles", myRolesArr)
+
+    val dialoguesArr = JSONArray()
+    db.fieldDao().getAll().forEach { field ->
+        db.taziehDao().getByField(field.id).forEach { tazieh ->
+            db.dialogueDao().getByTazieh(tazieh.id).forEach { dialogue ->
+                val turnsArr = JSONArray()
+                db.dialogueTurnDao().getByDialogue(dialogue.id).forEach { turn ->
+                    turnsArr.put(JSONObject().apply {
+                        put("sectionId", turn.sectionId)
+                        put("orderIndex", turn.orderIndex)
+                    })
+                }
+                dialoguesArr.put(JSONObject().apply {
+                    put("taziehId", dialogue.taziehId)
+                    put("title", dialogue.title)
+                    put("turns", turnsArr)
+                })
+            }
+        }
+    }
+    root.put("dialogues", dialoguesArr)
+
     return root.toString(2)
 }
 
-private fun taziehKey(field: String, tazieh: String) = "$field\u001f$tazieh"
-private fun sectionKey(field: String, tazieh: String, role: String, section: String) = "$field\u001f$tazieh\u001f$role\u001f$section"
-
-private suspend fun sectionKey(db: AppDatabase, sectionId: Long): String? = runCatching {
-    val section = db.sectionDao().getById(sectionId)
-    val role = db.roleDao().getById(section.roleId)
-    val tazieh = db.taziehDao().getById(role.taziehId) ?: return null
-    val field = db.fieldDao().getAll().firstOrNull { it.id == tazieh.fieldId } ?: return null
-    sectionKey(field.title, tazieh.title, role.title, section.title)
-}.getOrNull()
-
-private suspend fun writeZip(context: Context, db: AppDatabase): ByteArray {
-    val out = ByteArrayOutputStream()
-    ZipOutputStream(out).use { zip ->
-        fun putText(name: String, text: String) {
-            zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray(Charsets.UTF_8)); zip.closeEntry()
-        }
-        val json = buildBackupJson(context, db)
-        putText("backup.json", json)
-        val root = JSONObject(json)
-        val images = root.optJSONArray("images") ?: JSONArray()
-        for (i in 0 until images.length()) {
-            val o = images.getJSONObject(i); val archive = o.getString("archive")
-            val file = File(context.filesDir, "tazieh_images").resolve(archive.substringAfterLast('/').substringAfter('_'))
-            if (file.exists()) { zip.putNextEntry(ZipEntry(archive)); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry() }
-        }
-        val audio = root.optJSONArray("audio") ?: JSONArray()
-        for (i in 0 until audio.length()) {
-            val o = audio.getJSONObject(i); val archive = o.getString("archive")
-            val file = File(context.filesDir, "tazieh_audio").resolve(archive.substringAfterLast('/'))
-            if (file.exists()) { zip.putNextEntry(ZipEntry(archive)); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry() }
-        }
-    }
-    return out.toByteArray()
-}
-
+/**
+ * فایل پشتیبان JSON را در مسیری که کاربر انتخاب کرده (ابری یا حافظه گوشی) می‌نویسد.
+ * اگر رمز عبور داده شود، محتوا قبل از نوشتن با AES-GCM رمزگذاری می‌شود (چون
+ * فایل پشتیبان شامل یادداشت‌های شخصی کاربر است).
+ */
 suspend fun writeBackupToUri(context: Context, db: AppDatabase, uri: Uri, password: String? = null) {
-    val bytes = writeZip(context, db)
-    val finalBytes = if (password.isNullOrBlank()) bytes else encryptBackupBytes(bytes, password)
-    context.contentResolver.openOutputStream(uri)?.use { it.write(finalBytes) }
-        ?: error("فایل پشتیبان قابل نوشتن نیست")
+    val json = buildBackupJson(context, db)
+    val bytes = if (password.isNullOrBlank()) {
+        json.toByteArray(Charsets.UTF_8)
+    } else {
+        encryptBackupText(json, password)
+    }
+    context.contentResolver.openOutputStream(uri)?.use { out -> out.write(bytes) }
 }
 
-private fun restoreZipBytes(context: Context, db: AppDatabase, bytes: ByteArray): JSONObject {
-    var json: String? = null
-    val tempFiles = mutableMapOf<String, ByteArray>()
-    ZipInputStream(ByteArrayInputStream(bytes)).use { zis ->
-        while (true) {
-            val e = zis.nextEntry ?: break
-            val data = zis.readBytes()
-            if (e.name == "backup.json") json = String(data, Charsets.UTF_8) else if (e.name.startsWith("media/")) tempFiles[e.name] = data
+/**
+ * پشتیبان را از مسیر انتخابی کاربر می‌خواند و همه‌چیز را بازیابی می‌کند.
+ * این عملیات افزودنی است (مثل بقیه‌ی برنامه) نه جایگزینی؛ چیزی که همین الان
+ * روی گوشی هست پاک نمی‌شود، فقط موارد داخل فایل پشتیبان اضافه/به‌روزرسانی می‌شوند.
+ * اگر فایل با رمز ذخیره شده باشد، باید همان رمز را برای بازیابی وارد کنید.
+ */
+suspend fun restoreBackupFromUri(context: Context, db: AppDatabase, uri: Uri, password: String? = null): Result<Unit> {
+    return try {
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: return Result.failure(IllegalStateException("فایل خوانده نشد"))
+
+        val text = if (password.isNullOrBlank()) {
+            String(bytes, Charsets.UTF_8)
+        } else {
+            decryptBackupBytes(bytes, password)
         }
-    }
-    val root = JSONObject(json ?: error("backup.json پیدا نشد"))
-    root.put("__media", JSONObject(tempFiles.mapValues { String(it.value, Charsets.ISO_8859_1) }))
-    return root
-}
+        val root = JSONObject(text)
 
-suspend fun restoreBackupFromUri(context: Context, db: AppDatabase, uri: Uri, password: String? = null): Result<Unit> = runCatching {
-    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("فایل خوانده نشد")
-    val payload = if (bytes.size >= 2 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4b.toByte()) bytes
-    else if (!password.isNullOrBlank()) decryptBackupBinary(bytes, password)
-    else bytes
-    val isZip = payload.size >= 2 && payload[0] == 0x50.toByte() && payload[1] == 0x4b.toByte()
-    if (!isZip) {
-        val text = if (!password.isNullOrBlank()) decryptBackupBytes(bytes, password) else String(payload, Charsets.UTF_8)
-        restoreLegacyV1(context, db, text); return@runCatching
-    }
-    val obj = restoreZipBytes(context, db, payload)
-    restoreV2(context, db, obj)
-}
+        val notesArr = root.optJSONArray("notes") ?: JSONArray()
+        for (i in 0 until notesArr.length()) {
+            val o = notesArr.getJSONObject(i)
+            db.noteDao().insert(
+                NoteEntity(title = o.getString("title"), content = o.getString("content"))
+            )
+        }
 
-private suspend fun restoreLegacyV1(context: Context, db: AppDatabase, text: String) {
-    val root = JSONObject(text)
-    val notes = root.optJSONArray("notes") ?: JSONArray()
-    for (i in 0 until notes.length()) { val o = notes.getJSONObject(i); db.noteDao().insert(NoteEntity(title=o.getString("title"), content=o.getString("content"))) }
-    // نسخه 1 فقط ID داشت؛ فقط IDهایی که در دیتابیس فعلی واقعاً وجود دارند پذیرفته می‌شوند.
-    val bookmarks = root.optJSONArray("bookmarks") ?: JSONArray()
-    for (i in 0 until bookmarks.length()) { val id = bookmarks.getLong(i); if (runCatching { db.sectionDao().getById(id) }.isSuccess && !Prefs.isBookmarked(context,id)) Prefs.toggleBookmark(context,id) }
-}
+        val bookmarksArr = root.optJSONArray("bookmarks") ?: JSONArray()
+        for (i in 0 until bookmarksArr.length()) {
+            val sectionId = bookmarksArr.getLong(i)
+            if (!Prefs.isBookmarked(context, sectionId)) Prefs.toggleBookmark(context, sectionId)
+        }
 
-private suspend fun restoreV2(context: Context, db: AppDatabase, root: JSONObject) {
-    val notes = root.optJSONArray("notes") ?: JSONArray()
-    for (i in 0 until notes.length()) { val o=notes.getJSONObject(i); db.noteDao().insert(NoteEntity(title=o.getString("title"), content=o.getString("content"))) }
-    val keyToSection = mutableMapOf<String, Long>(); val keyToTazieh = mutableMapOf<String, Long>(); val keyToRole = mutableMapOf<String, Long>()
-    db.fieldDao().getAll().forEach { f -> db.taziehDao().getByField(f.id).forEach { t -> keyToTazieh[taziehKey(f.title,t.title)] = t.id; db.roleDao().getByTazieh(t.id).forEach { r -> keyToRole["${taziehKey(f.title,t.title)}\u001f${r.title}"]=r.id; db.sectionDao().getByRole(r.id).forEach { s -> keyToSection[sectionKey(f.title,t.title,r.title,s.title)] = s.id } } } }
-    val bookmarks = root.optJSONArray("bookmarks") ?: JSONArray(); for(i in 0 until bookmarks.length()) { keyToSection[bookmarks.getString(i)]?.let { if(!Prefs.isBookmarked(context,it)) Prefs.toggleBookmark(context,it) } }
-    val fns=root.optJSONArray("footnotes") ?: JSONArray(); for(i in 0 until fns.length()){val o=fns.getJSONObject(i); keyToSection[o.getString("section")]?.let{db.footnoteDao().insert(FootnoteEntity(sectionId=it,term=o.getString("term"),explanation=o.getString("explanation")))}}
-    val roles=root.optJSONArray("myRoles") ?: JSONArray(); for(i in 0 until roles.length()){val o=roles.getJSONObject(i); keyToTazieh[o.getString("tazieh")]?.let{tid-> val rid=keyToRole["${o.getString("tazieh")}\u001f${o.getString("role")}"]; if(rid!=null) Prefs.setMyRole(context,tid,rid)}}
-    val dialogs=root.optJSONArray("dialogues") ?: JSONArray(); for(i in 0 until dialogs.length()){val o=dialogs.getJSONObject(i); val tid=keyToTazieh[o.getString("tazieh")] ?: continue; val did=db.dialogueDao().insert(DialogueEntity(taziehId=tid,title=o.getString("title"))); val turns=o.getJSONArray("turns"); for(j in 0 until turns.length()){val t=turns.getJSONObject(j); keyToSection[t.getString("section")]?.let{sid->db.dialogueTurnDao().insert(DialogueTurnEntity(dialogueId=did,sectionId=sid,orderIndex=t.getInt("orderIndex")))}}
+        val footnotesArr = root.optJSONArray("footnotes") ?: JSONArray()
+        for (i in 0 until footnotesArr.length()) {
+            val o = footnotesArr.getJSONObject(i)
+            db.footnoteDao().insert(
+                FootnoteEntity(sectionId = o.getLong("sectionId"), term = o.getString("term"), explanation = o.getString("explanation"))
+            )
+        }
+
+        val myRolesArr = root.optJSONArray("myRoles") ?: JSONArray()
+        for (i in 0 until myRolesArr.length()) {
+            val o = myRolesArr.getJSONObject(i)
+            Prefs.setMyRole(context, o.getLong("taziehId"), o.getLong("roleId"))
+        }
+
+        val dialoguesArr = root.optJSONArray("dialogues") ?: JSONArray()
+        for (i in 0 until dialoguesArr.length()) {
+            val o = dialoguesArr.getJSONObject(i)
+            val dialogueId = db.dialogueDao().insert(DialogueEntity(taziehId = o.getLong("taziehId"), title = o.getString("title")))
+            val turnsArr = o.getJSONArray("turns")
+            for (j in 0 until turnsArr.length()) {
+                val t = turnsArr.getJSONObject(j)
+                db.dialogueTurnDao().insert(
+                    DialogueTurnEntity(dialogueId = dialogueId, sectionId = t.getLong("sectionId"), orderIndex = t.getInt("orderIndex"))
+                )
+            }
+        }
+
+        Result.success(Unit)
+    } catch (e: Exception) {
+        Result.failure(e)
     }
-    val mediaObj=root.optJSONObject("__media") ?: JSONObject(); val images=root.optJSONArray("images") ?: JSONArray(); val imageDir=File(context.filesDir,"tazieh_images").apply{mkdirs()}
-    for(i in 0 until images.length()){val o=images.getJSONObject(i); val tid=keyToTazieh[o.getString("tazieh")] ?: continue; val archive=o.getString("archive"); val raw=mediaObj.optString(archive,null) ?: continue; val name="restored_${System.currentTimeMillis()}_${i}.jpg"; val path=File(imageDir,name); path.writeBytes(raw.toByteArray(Charsets.ISO_8859_1)); db.taziehImageDao().insert(TaziehImageEntity(taziehId=tid,filePath=path.absolutePath,caption=o.optString("caption",""))) }
-    val audios=root.optJSONArray("audio") ?: JSONArray(); val audioDir=File(context.filesDir,"tazieh_audio").apply{mkdirs()}
-    for(i in 0 until audios.length()){val o=audios.getJSONObject(i); val sid=keyToSection[o.getString("section")] ?: continue; val archive=o.getString("archive"); val raw=mediaObj.optString(archive,null) ?: continue; val path=File(audioDir,"restored_${System.currentTimeMillis()}_${i}.mp3"); path.writeBytes(raw.toByteArray(Charsets.ISO_8859_1)); db.sectionDao().updateAudioUrl(sid,path.absolutePath) }
 }
