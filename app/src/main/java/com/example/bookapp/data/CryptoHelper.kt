@@ -27,20 +27,23 @@ private fun deriveKey(password: String, salt: ByteArray): SecretKeySpec {
     return SecretKeySpec(keyBytes, "AES")
 }
 
-fun encryptBackupText(plainText: String, password: String): ByteArray {
+fun encryptBackupBytes(plainBytes: ByteArray, password: String): ByteArray {
     val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
     val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
     val key = deriveKey(password, salt)
 
     val cipher = Cipher.getInstance("AES/GCM/NoPadding")
     cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
-    val encrypted = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
+    val encrypted = cipher.doFinal(plainBytes)
 
     return salt + iv + encrypted
 }
 
+fun encryptBackupText(plainText: String, password: String): ByteArray =
+    encryptBackupBytes(plainText.toByteArray(Charsets.UTF_8), password)
+
 /** اگر رمز اشتباه باشد یا فایل خراب باشد، استثنا پرتاب می‌شود (توسط فراخوان گرفته می‌شود) */
-fun decryptBackupBytes(data: ByteArray, password: String): String {
+fun decryptBackupToBytes(data: ByteArray, password: String): ByteArray {
     require(data.size > 28) { "فایل پشتیبان خیلی کوچک/نامعتبر است" }
     val salt = data.copyOfRange(0, 16)
     val iv = data.copyOfRange(16, 28)
@@ -50,5 +53,9 @@ fun decryptBackupBytes(data: ByteArray, password: String): String {
     val cipher = Cipher.getInstance("AES/GCM/NoPadding")
     cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
     val decrypted = cipher.doFinal(encrypted)
-    return String(decrypted, Charsets.UTF_8)
+    return decrypted
 }
+
+
+fun decryptBackupBytes(data: ByteArray, password: String): String =
+    String(decryptBackupToBytes(data, password), Charsets.UTF_8)
