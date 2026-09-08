@@ -79,9 +79,6 @@ interface SectionDao {
     @Query("SELECT * FROM sections WHERE id = :sectionId")
     suspend fun getById(sectionId: Long): SectionEntity
 
-    @Query("SELECT * FROM sections WHERE id = :sectionId")
-    suspend fun getByIdOrNull(sectionId: Long): SectionEntity?
-
     @Query("SELECT COALESCE(MAX(orderIndex), -1) FROM sections WHERE roleId = :roleId")
     suspend fun getMaxOrderIndex(roleId: Long): Int
 
@@ -118,9 +115,6 @@ interface FootnoteDao {
 
 @Dao
 interface DialogueDao {
-    @Query("SELECT * FROM dialogues WHERE taziehId = :taziehId AND title = :title LIMIT 1")
-    suspend fun getByTitle(taziehId: Long, title: String): DialogueEntity?
-
     @Query("SELECT * FROM dialogues WHERE taziehId = :taziehId ORDER BY id")
     suspend fun getByTazieh(taziehId: Long): List<DialogueEntity>
 
@@ -157,9 +151,6 @@ interface DialogueTurnDao {
 
 @Dao
 interface TaziehImageDao {
-    @Query("SELECT * FROM tazieh_images ORDER BY id")
-    suspend fun getAll(): List<TaziehImageEntity>
-
     @Query("SELECT * FROM tazieh_images WHERE taziehId = :taziehId ORDER BY id")
     suspend fun getByTazieh(taziehId: Long): List<TaziehImageEntity>
 

@@ -22,32 +22,31 @@ android {
     namespace = "com.example.bookapp"
     compileSdk = 34
 
-    // شماره نسخه/برچسب هر build را از تاریخچه Git می‌سازد تا هر build برچسب
-    // منحصربه‌فرد و قابل‌ردیابی داشته باشد؛ اگر پروژه از حالت git checkout نشده باشد
-    // (مثلاً از یک فایل zip استخراج شده)، به مقدار ثابت پیش‌فرض برمی‌گردد تا build نشکند.
-    val hasGit = rootProject.file(".git").exists()
-    val gitCommitCount = if (hasGit) {
-        runCatching {
-            providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
-                .standardOutput.asText.get().trim().toIntOrNull()
-        }.getOrNull() ?: 1
-    } else 1
-    val gitShortSha = if (hasGit) {
-        runCatching {
-            providers.exec { commandLine("git", "rev-parse", "--short", "HEAD") }
-                .standardOutput.asText.get().trim()
-        }.getOrNull() ?: "local"
-    } else "local"
+    // نسخه برنامه را اینجا دستی تعیین کنید.
+    // برای هر انتشار جدید فقط این دو مقدار را تغییر دهید.
+    val appVersionCode = 100
+    val appVersionName = "1.0.0"
 
     defaultConfig {
         applicationId = "com.example.bookapp"
         minSdk = 23
         targetSdk = 34
-        // شماره نسخه/برچسب هر build به‌صورت خودکار از تاریخچه Git ساخته می‌شود
-        // (تعداد کامیت‌ها = versionCode، و نام نسخه شامل هش کوتاه کامیت است)
-        // تا هر build یک برچسب منحصربه‌فرد داشته باشد و قابل ردیابی باشد.
-        versionCode = gitCommitCount
-        versionName = "1.0-build$gitCommitCount+$gitShortSha"
+        versionCode = appVersionCode
+        versionName = appVersionName
+    }
+
+    // دو نسخه مستقل برای مقایسه همزمان روی یک گوشی:
+    // stable = نسخه اصلی، test = نسخه آزمایشی با شناسه نصب جداگانه.
+    flavorDimensions += "edition"
+    productFlavors {
+        create("stable") {
+            dimension = "edition"
+        }
+        create("test") {
+            dimension = "edition"
+            applicationIdSuffix = ".test"
+            versionNameSuffix = "-TEST"
+        }
     }
 
     val storeFilePath = signingProp("RELEASE_STORE_FILE")
