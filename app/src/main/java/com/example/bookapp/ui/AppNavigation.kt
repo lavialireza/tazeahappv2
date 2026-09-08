@@ -296,16 +296,51 @@ fun AppNavigation(
 
         composable(ROUTE_ALL_IMAGES) {
             var images by remember { mutableStateOf(listOf<GalleryImageItem>()) }
-            LaunchedEffect(Unit) {
+            var taziehsForGallery by remember { mutableStateOf(listOf<GalleryTaziehItem>()) }
+            val galleryScope = androidx.compose.runtime.rememberCoroutineScope()
+
+            suspend fun reloadGalleryImages() {
                 val taziehs = db.taziehDao().getAll()
+                taziehsForGallery = taziehs.map { GalleryTaziehItem(it.id, it.title) }
                 images = taziehs.flatMap { tazieh ->
                     db.taziehImageDao().getByTazieh(tazieh.id).map { img ->
-                        GalleryImageItem(img.id, img.filePath, img.caption, tazieh.title)
+                        GalleryImageItem(img.id, img.filePath, img.caption, tazieh.id, tazieh.title)
                     }
                 }
             }
+
+            LaunchedEffect(Unit) { reloadGalleryImages() }
+
             AllImagesGalleryScreen(
                 images = images,
+                taziehs = taziehsForGallery,
+                onAddImage = { uri, taziehId ->
+                    galleryScope.launch {
+                        val path = com.example.bookapp.data.copyImageToAppStorage(context, uri)
+                        if (path != null) {
+                            db.taziehImageDao().insert(
+                                com.example.bookapp.data.TaziehImageEntity(
+                                    taziehId = taziehId,
+                                    filePath = path
+                                )
+                            )
+                            reloadGalleryImages()
+                        }
+                    }
+                },
+                onDeleteImage = { image ->
+                    galleryScope.launch {
+                        db.taziehImageDao().delete(image.id)
+                        com.example.bookapp.data.deleteImageFromAppStorage(image.filePath)
+                        reloadGalleryImages()
+                    }
+                },
+                onUpdateCaption = { image, caption ->
+                    galleryScope.launch {
+                        db.taziehImageDao().updateCaption(image.id, caption)
+                        reloadGalleryImages()
+                    }
+                },
                 onBack = { navController.popBackStack() }
             )
         }
